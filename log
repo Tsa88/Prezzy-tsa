@@ -1,0 +1,6 @@
+// Princípio da velocidade de percepção constante
+function logLerp(startScale, endScale, t) {
+    const logStart = Math.log(startScale);
+    const logEnd = Math.log(endScale);
+    return Math.exp(lerp(logStart, logEnd, t));
+}
