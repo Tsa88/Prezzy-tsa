@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZUI Render Engine - Estilo Prezi</title>
+    <style>
+        /* CSS Embutido: Remove as margens para o Canvas ocupar 100% da tela */
+        body, html { 
+            margin: 0; 
+            padding: 0; 
+            width: 100%; 
+            height: 100%; 
+            overflow: hidden; 
+            background-color: #e0e5ec; /* Cor de fundo suave */
+            font-family: 'Arial', sans-serif; 
+        }
+        
+        canvas { 
+            display: block; 
+        }
+        
+        /* Estilo do botão Avançar (Interface do Usuário) */
+        #btn-next {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            background-color: #0056b3;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            transition: background 0.2s, transform 0.1s;
+            z-index: 10; /* Garante que fique acima do canvas */
+        }
+        
+        #btn-next:hover { 
+            background-color: #004494; 
+        }
+        
+        #btn-next:active { 
+            transform: scale(0.95); 
+        }
+        
+        #btn-next:disabled { 
+            background-color: #999; 
+            cursor: not-allowed; 
+            transform: none;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="viewport"></canvas>
+    
+    <button id="btn-next">Avançar ❯</button>
+
+    <script>
+        // --- 1. LEITURA DE INPUT (ESTRUTURA JSON) ---
+        // Aqui definimos os slides e o plano de animação do nosso motor
+        const presentationData = {
+            final_presentation_structure: [
+                { id: "slide1", type: "frame", title: "Introdução", content: "Bem-vindo ao Motor ZUI", x: 0, y: 0, width: 800, height: 600 },
+                { id: "slide2", type: "frame", title: "O Problema", content: "Apresentações lineares são chatas.", x: 2000, y: 500, width: 800, height: 600 },
+                // O Slide 3 é um detalhe pequeno dentro do Slide 2 (exigindo zoom)
+                { id: "slide3", type: "frame", title: "O Detalhe", content: "Aqui usamos Zoom Logarítmico!", x: 2000, y: 500, width: 200, height: 150 } 
+            ],
+            animation_plan: [
+                // Transição 1: Move do Slide 1 (0,0) para o Slide 2 (2000, 500) mantendo a escala
+                { startState: {x: 0, y: 0, scale: 0.8}, endState: {x: 2000, y: 500, scale: 0.8}, duration: 2000 },
+                // Transição 2: Dá um zoom profundo para focar no Slide 3 (escala vai de 0.8 para 4.0)
+                { startState: {x: 2000, y: 500, scale: 0.8}, endState: {x: 2000, y: 500, scale: 4.0}, duration: 2500 }
+            ]
+        };
+
+        // --- 2. SETUP DO CANVAS E DA CÂMERA ---
+        const canvas = document.getElementById('viewport');
+        const ctx = canvas.getContext('2d');
+        const btnNext = document.getElementById('btn-next');
+
+        // Estado atual da Câmera Virtual
+        let camera = { x: 0, y: 0, scale: 0.8 };
+        let currentAnimationStep = 0;
+        let isAnimating = false;
+
+        // Função para ajustar o canvas dinamicamente se a janela mudar de tamanho
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            render(); // Garante que a tela seja redesenhada no novo tamanho
+        }
+        window.addEventListener('resize', resize);
+
+        // --- 3. MATEMÁTICA E FÍSICA (TWEENING) ---
+        
+        // Função Ease-In-Out Cubic: garante aceleração e desaceleração suaves
+        function easeInOutCubic(t) {
+            return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        }
+
+        // Interpolação Linear (Pan): calcula pontos intermediários para X e Y
+        function lerp(start, end, t) {
+            return start + (end - start) * t;
+        }
+
+        // Interpolação Logarítmica (Zoom): crucial para a percepção de velocidade constante
+        function logLerp(startScale, endScale, t) {
+            const logStart = Math.log(startScale);
+            const logEnd = Math.log(endScale);
+            return Math.exp(lerp(logStart, logEnd, t));
+        }
+
+        // Função principal de Animação
+        function animateCamera(endState, duration) {
+            isAnimating = true;
+            btnNext.disabled = true; // Desativa o botão para evitar cliques múltiplos
+
+            // Guarda o estado de onde a câmera está saindo
+            const startState = { x: camera.x, y: camera.y, scale: camera.scale };
+            const startTime = performance.now();
+
+            function frame(currentTime) {
+                // Calcula o progresso do tempo (de 0.0 até 1.0)
+                let timeElapsed = currentTime - startTime;
+                let t = Math.min(timeElapsed / duration, 1.0);
+                
+                // Aplica a curva de suavização (easing)
+                let easedT = easeInOutCubic(t);
+
+                // Atualiza a posição da câmera usando interpolação
+                camera.x = lerp(startState.x, endState.x, easedT);
+                camera.y = lerp(startState.y, endState.y, easedT);
+                camera.scale = logLerp(startState.scale, endState.scale, easedT);
+
+                render(); // Desenha o frame atualizado
+
+                if (t < 1.0) {
+                    requestAnimationFrame(frame); // Solicita o próximo frame
+                } else {
+                    // Finaliza a animação
+                    isAnimating = false;
+                    currentAnimationStep++;
+                    
+                    // Desativa o botão se não houver mais animações
+                    if (currentAnimationStep >= presentationData.animation_plan.length) {
+                        btnNext.disabled = true;
+                        btnNext.innerText = "Fim";
+                    } else {
+                        btnNext.disabled = false;
+                    }
+                }
+            }
+            
+            // Inicia o loop de animação
+            requestAnimationFrame(frame);
+        }
+
+        // --- 4. RENDERIZAÇÃO E CULLING ---
+        function render() {
+            // 4.1. Limpa a tela inteira
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 4.2. Culling: Calcula as coordenadas da área visível atual
+            const viewWidth = canvas.width / camera.scale;
+            const viewHeight = canvas.height / camera.scale;
+            const viewLeft = camera.x - viewWidth / 2;
+            const viewRight = camera.x + viewWidth / 2;
+            const viewTop = camera.y - viewHeight / 2;
+            const viewBottom = camera.y + viewHeight / 2;
+
+            ctx.save();
+            
+            // 4.3. Aplica as transformações da Câmera
+            // Movemos o centro do canvas para o centro da tela
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            // Aplicamos o zoom
+            ctx.scale(camera.scale, camera.scale);
+            // Movemos o "mundo" na direção oposta à câmera
+            ctx.translate(-camera.x, -camera.y);
+
+            // 4.4. Loop de desenho dos frames (slides)
+            presentationData.final_presentation_structure.forEach(node => {
+                
+                // Variáveis das bordas do nó atual
+                const nodeLeft = node.x - node.width / 2;
+                const nodeRight = node.x + node.width / 2;
+                const nodeTop = node.y - node.height / 2;
+                const nodeBottom = node.y + node.height / 2;
+
+                // Teste de Culling rudimentar: se estiver fora da visão, não desenha (otimização de performance)
+                if (nodeRight < viewLeft || nodeLeft > viewRight || nodeBottom < viewTop || nodeTop > viewBottom) {
+                    return; 
+                }
+
+                // Desenha o fundo do Slide (Padrão Acadêmico/ABNT)
+                ctx.fillStyle = "#ffffff";
+                ctx.shadowColor = "rgba(0,0,0,0.1)";
+                ctx.shadowBlur = 15;
+                // Ajusta x e y para desenhar a partir do canto superior esquerdo do nó
+                ctx.fillRect(nodeLeft, nodeTop, node.width, node.height);
+                
+                // Desenha a borda do slide
+                ctx.shadowBlur = 0; // Remove sombra para textos e bordas
+                ctx.strokeStyle = "#cccccc";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(nodeLeft, nodeTop, node.width, node.height);
+
+                // Desenha os Textos
+                ctx.fillStyle = "#333333";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                
+                // Título
+                ctx.font = "bold 40px Arial";
+                ctx.fillText(node.title, node.x, node.y - 50);
+                
+                // Conteúdo
+                ctx.font = "24px Arial";
+                ctx.fillText(node.content, node.x, node.y + 30);
+            });
+
+            ctx.restore();
+        }
+
+        // --- 5. INTERAÇÃO (EVENTOS) ---
+        // Adiciona a ação de clique ao botão "Avançar"
+        btnNext.addEventListener('click', () => {
+            if (isAnimating || currentAnimationStep >= presentationData.animation_plan.length) return;
+            
+            // Lê o próximo passo no JSON de planejamento
+            const nextTransition = presentationData.animation_plan[currentAnimationStep];
+            
+            // Inicia a transição
+            animateCamera(nextTransition.endState, nextTransition.duration);
+        });
+
+        // --- 6. INICIALIZAÇÃO ---
+        resize(); // Chama o resize inicial para ajustar a tela e renderizar o primeiro frame
+
+    </script>
+</body>
+</html>
