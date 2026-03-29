@@ -173,57 +173,80 @@
             const viewBottom = camera.y + viewHeight / 2;
 
             ctx.save();
-            
-            // 4.3. Aplica as transformações da Câmera
-            // Movemos o centro do canvas para o centro da tela
-            ctx.translate(canvas.width / 2, canvas.height / 2);
-            // Aplicamos o zoom
-            ctx.scale(camera.scale, camera.scale);
-            // Movemos o "mundo" na direção oposta à câmera
-            ctx.translate(-camera.x, -camera.y);
+            try {
+                // 4.3. Aplica as transformações da Câmera
+                // Movemos o centro do canvas para o centro da tela
+                ctx.translate(canvas.width / 2, canvas.height / 2);
+                // Aplicamos o zoom
+                ctx.scale(camera.scale, camera.scale);
+                // Movemos o "mundo" na direção oposta à câmera
+                ctx.translate(-camera.x, -camera.y);
 
-            // 4.4. Loop de desenho dos frames (slides)
-            presentationData.final_presentation_structure.forEach(node => {
-                
-                // Variáveis das bordas do nó atual
-                const nodeLeft = node.x - node.width / 2;
-                const nodeRight = node.x + node.width / 2;
-                const nodeTop = node.y - node.height / 2;
-                const nodeBottom = node.y + node.height / 2;
+                // 4.4. Loop de desenho dos frames (slides)
+                presentationData.final_presentation_structure.forEach(node => {
+                    
+                    // Variáveis das bordas do nó atual
+                    const nodeLeft = node.x - node.width / 2;
+                    const nodeRight = node.x + node.width / 2;
+                    const nodeTop = node.y - node.height / 2;
+                    const nodeBottom = node.y + node.height / 2;
 
-                // Teste de Culling rudimentar: se estiver fora da visão, não desenha (otimização de performance)
-                if (nodeRight < viewLeft || nodeLeft > viewRight || nodeBottom < viewTop || nodeTop > viewBottom) {
-                    return; 
-                }
+                    // Teste de Culling rudimentar: se estiver fora da visão, não desenha (otimização de performance)
+                    if (nodeRight < viewLeft || nodeLeft > viewRight || nodeBottom < viewTop || nodeTop > viewBottom) {
+                        return; 
+                    }
 
-                // Desenha o fundo do Slide (Padrão Acadêmico/ABNT)
-                ctx.fillStyle = "#ffffff";
-                ctx.shadowColor = "rgba(0,0,0,0.1)";
-                ctx.shadowBlur = 15;
-                // Ajusta x e y para desenhar a partir do canto superior esquerdo do nó
-                ctx.fillRect(nodeLeft, nodeTop, node.width, node.height);
-                
-                // Desenha a borda do slide
-                ctx.shadowBlur = 0; // Remove sombra para textos e bordas
-                ctx.strokeStyle = "#cccccc";
-                ctx.lineWidth = 2;
-                ctx.strokeRect(nodeLeft, nodeTop, node.width, node.height);
+                    ctx.save();
+                    try {
+                        // Desenha o fundo do Slide (Padrão Acadêmico/ABNT)
+                        ctx.fillStyle = "#ffffff";
+                        ctx.shadowColor = "rgba(0,0,0,0.1)";
+                        ctx.shadowBlur = 15;
+                        // Ajusta x e y para desenhar a partir do canto superior esquerdo do nó
+                        ctx.fillRect(nodeLeft, nodeTop, node.width, node.height);
+                        
+                        // Remove sombra completamente para textos e bordas
+                        ctx.shadowColor = "transparent";
+                        ctx.shadowBlur = 0;
 
-                // Desenha os Textos
-                ctx.fillStyle = "#333333";
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                
-                // Título
-                ctx.font = "bold 40px Arial";
-                ctx.fillText(node.title, node.x, node.y - 50);
-                
-                // Conteúdo
-                ctx.font = "24px Arial";
-                ctx.fillText(node.content, node.x, node.y + 30);
-            });
+                        // Desenha a borda do slide
+                        ctx.strokeStyle = "#cccccc";
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(nodeLeft, nodeTop, node.width, node.height);
 
-            ctx.restore();
+                        // Aplica clipping para impedir que o texto ultrapasse os limites do slide
+                        ctx.beginPath();
+                        ctx.rect(nodeLeft, nodeTop, node.width, node.height);
+                        ctx.clip();
+
+                        // Escala as fontes proporcionalmente ao tamanho do slide (referência: 800x600)
+                        const BASE_TITLE_FONT = 40;
+                        const BASE_CONTENT_FONT = 24;
+                        const MIN_TITLE_FONT = 10;
+                        const MIN_CONTENT_FONT = 8;
+                        const fontScale = Math.min(node.width / 800, node.height / 600);
+                        const titleFontSize = Math.max(MIN_TITLE_FONT, Math.round(BASE_TITLE_FONT * fontScale));
+                        const contentFontSize = Math.max(MIN_CONTENT_FONT, Math.round(BASE_CONTENT_FONT * fontScale));
+
+                        // Desenha os Textos
+                        ctx.fillStyle = "#333333";
+                        ctx.textAlign = "center";
+                        ctx.textBaseline = "middle";
+                        
+                        // Título (posicionado proporcionalmente à altura do slide)
+                        ctx.font = `bold ${titleFontSize}px Arial`;
+                        ctx.fillText(node.title, node.x, node.y - node.height * 0.08);
+                        
+                        // Conteúdo (posicionado proporcionalmente à altura do slide)
+                        ctx.font = `${contentFontSize}px Arial`;
+                        ctx.fillText(node.content, node.x, node.y + node.height * 0.05);
+                    } finally {
+                        ctx.restore();
+                    }
+                });
+            } finally {
+                ctx.restore();
+            }
         }
 
         // --- 5. INTERAÇÃO (EVENTOS) ---
